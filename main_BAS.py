@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import argparse
 import pickle
 from collections import Counter
-from BAS_Gaussain_mode import BAS_2x2, BAS_3x3
+from BAS_Gaussain_mode import *
 import time
 from MMD import RBFMMD2TF
 from quantum import *
@@ -34,7 +34,7 @@ parser.add_argument('--num_timesteps', type=int, default=30)
 
 parser.add_argument('--sigma', type=float, default=10000, help="10000: hybrid")
 
-parser.add_argument('--layer', type=int, default=12)
+parser.add_argument('--layer', type=int, default=6)
 parser.add_argument('--ansatz_connection', type=str, default="all_to_all", help="all_to_all | star | chain")
 
 parser.add_argument('--epochs', type=int, default=6000)
@@ -55,11 +55,15 @@ parser.add_argument('--check_point', type=bool, default=True)
 
 args = parser.parse_args()
 
-assert args.N == 4 or args.N == 9, ValueError("only 4 or 9 BAS problem")
+# assert args.N == 4 or args.N == 9, ValueError("only 4 or 9 BAS problem")
+
 
 
 np.random.seed(args.seed)
 tf.random.set_seed(args.seed)
+
+
+
 
 
 if int(args.sigma) == 10000:
@@ -106,10 +110,42 @@ class Model:
         if args.N == 4:
             self.frequencies_stand = [1 / 6., 0, 0, 1 / 6., 0, 1 / 6., 0, 0, 0, 0, 1 / 6., 0, 1 / 6., 0, 0, 1 / 6.]
             self.indices = [0, 3, 5, 10, 12, 15]
-        else:
-            self.frequencies_stand = np.zeros(shape=[2 ** 9], dtype=np.float32)
+            self.dataset = np.array(BAS_2x2, dtype=np.int32)
+
+        elif args.N == 6:
+            self.frequencies_stand = np.zeros(shape=[2 ** args.N], dtype=np.float32)
+            self.indices = [56, 7, 36, 18, 9, 54, 27, 45, 63, 0]
+            self.frequencies_stand[self.indices] = 1. / 10
+            self.dataset = np.array(BAS_2x3, dtype=np.int32)
+        elif args.N == 8:
+            self.frequencies_stand = np.zeros(shape=[2 ** args.N], dtype=np.float32)
+            self.indices = [240, 15, 136, 68, 34, 17, 204, 170, 153, 102, 85, 51, 238, 221, 187, 119, 255, 0]
+            self.frequencies_stand[self.indices] = 1. / len(self.indices)
+            self.dataset = np.array(BAS_2x4, dtype=np.int32)
+        elif args.N == 9:
+            self.frequencies_stand = np.zeros(shape=[2 ** args.N], dtype=np.float32)
             self.indices = [448, 56, 7, 504, 63, 455, 292, 146, 73, 438, 219, 365, 511, 0]
             self.frequencies_stand[self.indices] = 1. / 14.
+            self.dataset = np.array(BAS_3x3, dtype=np.int32)
+        elif args.N == 10:
+            self.frequencies_stand = np.zeros(shape=[2 ** args.N], dtype=np.float32)
+            self.indices = [992, 31, 528, 264, 132, 66, 33, 792, 660, 594, 561, 396, 330, 297, 198, 165, 99, 924, 858,
+                            825, 726, 693, 627, 462, 429, 363, 231, 990, 957, 891, 759, 495, 1023, 0]
+            self.frequencies_stand[self.indices] = 1. / len(self.indices)
+            self.dataset = np.array(BAS_2x5, dtype=np.int32)
+        elif args.N == 12:
+            self.frequencies_stand = np.zeros(shape=[2 ** args.N], dtype=np.float32)
+            self.indices = [3840, 240, 15, 4080, 255, 3855, 2184, 1092, 546, 273, 3276, 2730, 2457, 1638,
+                            1365, 819, 3822, 3549, 3003, 1911, 4095, 0]
+            self.frequencies_stand[self.indices] = 1. / len(self.indices)
+            self.dataset = np.array(BAS_3x4, dtype=np.int32)
+        elif args.N == 16:
+            self.frequencies_stand = np.zeros(shape=[2 ** args.N], dtype=np.float32)
+            self.indices = [61440, 3840, 240, 15, 65280, 61680, 61455, 4080, 3855, 255, 65520, 65295, 61695, 4095,
+                            34952, 17476, 8738, 4369, 52428, 43690, 39321, 26214, 21845, 13107, 61166, 57021, 48059,
+                            30583, 65535, 0]
+            self.frequencies_stand[self.indices] = 1. / len(self.indices)
+            self.dataset = np.array(BAS_4x4, dtype=np.int32)
 
         self.all_possible_values = list(range(self.d))
 
@@ -118,10 +154,10 @@ class Model:
                                 1568, 2446, 3832, 5999]
         else:
             self.check_point = []
-        if args.N == 4:
-            self.dataset = np.array(BAS_2x2, dtype=np.int32)
-        else:
-            self.dataset = np.array(BAS_3x3, dtype=np.int32)
+        # if args.N == 4:
+        #     self.dataset = np.array(BAS_2x2, dtype=np.int32)
+        # else:
+        #     self.dataset = np.array(BAS_3x3, dtype=np.int32)
 
         self.cut_index = [[i for i in range(args.N) if i != n] for n in range(args.N)]
 
@@ -185,7 +221,7 @@ class Model:
         plt.title('Training Loss')
         plt.savefig(result_path + "/loss_result.jpg")
 
-        # plt.show()
+
         plt.close()
 
         plt.figure()
@@ -209,10 +245,10 @@ class Model:
         if args.split_flat:
             result = []
             x_t_binary_init = []
-            for _ in range(int(num_samples / 5000)):
-                x_t_binary_part = tf.random.uniform([5000], minval=0, maxval=self.d, dtype=tf.int32)
+            for _ in range(int(num_samples / 20000)):
+                x_t_binary_part = tf.random.uniform([20000], minval=0, maxval=self.d, dtype=tf.int32)  #
 
-                binary_list = generate_samples(5000, x_t_binary_part, self.N, self.num_timesteps, self.Theta,
+                binary_list = generate_samples(20000, x_t_binary_part, self.N, self.num_timesteps, self.Theta,
                                            self.L, self.ansatz_connection)  # [num_samples, N]
 
                 result.append(binary_list)  # [11, 30, 2000, 9]
@@ -220,16 +256,14 @@ class Model:
             binary_list = np.concatenate(result, axis=1)
             x_t_binary_init = tf.reshape(x_t_binary_init, [num_samples, -1])
         else:
-            x_t_binary_init = tf.random.uniform([num_samples], minval=0, maxval=self.d, dtype=tf.int32)
+            x_t_binary_init = tf.random.uniform([num_samples], minval=0, maxval=self.d, dtype=tf.int32)  #
 
             binary_list = generate_samples(num_samples, x_t_binary_init, self.N, self.num_timesteps, self.Theta,
                                            self.L, self.ansatz_connection)  # [num_samples, N]
         # binary_list = binary_list.numpy()
         samples_np = binary_list[-1].astype(np.int32)  #
 
-
         samples_flat = samples_np.reshape(num_samples, -1)
-
 
         patterns_flat = tf.reshape(self.dataset,(self.dataset.shape[0], -1))
 
@@ -237,12 +271,12 @@ class Model:
 
         match_count = np.sum(matches)
 
-
         proportion = match_count / num_samples
         result_path = self.get_result_path(epoch=epoch, result_path=result_path)
         kl_0, frequencies_0 = self.draw(num_samples, samples_flat, epoch, t=0, result_path=result_path, proportion=proportion)
+        # print(f"{kl_div:.5f}")
 
-        print(f"{num_samples}, KL ：{kl_0:.5f}")
+        print(f" generate {num_samples} samples, Kl: {kl_0:.5f}")
 
         output_file_path = result_path + f"/output_samples/samples_epoch{epoch}_kl_{kl_0:.4f}.txt"
         if not args.fast_flat:
@@ -251,7 +285,6 @@ class Model:
 
                     sample_str = ''.join(map(str, sample))
                     f.write(sample_str + '\n')
-
 
         x_t_binary_init = tf.bitwise.right_shift(tf.expand_dims(x_t_binary_init, axis=-1), tf.range(0, self.N)) & 1
         x_t_binary_init = tf.reshape(x_t_binary_init, [tf.shape(x_t_binary_init)[0], self.N])
@@ -287,18 +320,19 @@ class Model:
 
         kl_div = tf.keras.losses.kl_divergence(self.frequencies_stand, frequencies)
 
+
         # prob_list[-1], result_path, epoch, acc_list[-1], kl[-1], t=0
         self.draw_picture(frequencies, result_path, epoch, proportion, kl_div, t)
         return kl_div, frequencies
 
     def draw_picture(self, frequencies, result_path, epoch, proportion, kl_div, t, inf_flat=False):
 
-        plt.bar(self.all_possible_values, self.frequencies_stand, alpha=0.6, label="BAS", color="skyblue", width=2)
-        plt.bar(self.all_possible_values, frequencies, alpha=0.6, label="trained", color="orange", width=2)
+        plt.bar(self.all_possible_values, self.frequencies_stand, alpha=0.6, label="BAS", color="skyblue")
+        plt.bar(self.all_possible_values, frequencies, alpha=0.6, label="trained", color="orange")
+
 
         selected_labels = [self.binary_labels[i] for i in self.indices]
-        plt.xticks(self.indices, selected_labels, rotation=45, ha='right', fontsize=8)
-
+        plt.xticks(self.indices, selected_labels, rotation=45, ha='right', fontsize=8)  #
         plt.margins(x=0.05)
 
         plt.xlabel(f'{self.N}x{self.N} Binary Pattern (as Decimal)')
