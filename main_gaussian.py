@@ -52,9 +52,10 @@ parser.add_argument('--decay_steps', type=int, default=5000)
 parser.add_argument('--num_samples', type=int, default=100000)
 
 parser.add_argument('--fast_flat', type=bool, default=False)
-parser.add_argument('--split_flat', type=bool, default=True)
+parser.add_argument('--split_flat', type=bool, default=False)
 parser.add_argument('--check_point', type=bool, default=True)
 args = parser.parse_args()
+
 
 
 np.random.seed(args.seed)
@@ -139,7 +140,6 @@ class Model:
 
                 result_path, kl = self.sample_and_evaluate(num_samples=args.num_samples, epoch=epoch, result_path=result_path)
 
-
                 if (epoch + 1) % 500 == 0 or epoch == args.epochs - 1 or epoch == 0:
                     epoch_list.append(epoch)
                     kl_list.append(kl)
@@ -191,7 +191,7 @@ class Model:
             result = []
             x_t_binary_init = []
             for _ in range(int(num_samples / 20000)):
-                x_t_binary_part = tf.random.uniform([20000], minval=0, maxval=self.d, dtype=tf.int32)
+                x_t_binary_part = tf.random.uniform([20000], minval=0, maxval=self.d, dtype=tf.int32)  # 随机初始化
 
                 binary_list = generate_samples(20000, x_t_binary_part, self.N, self.num_timesteps, self.Theta,
                                                self.L, self.ansatz_connection)  # [num_samples, N]
@@ -200,13 +200,12 @@ class Model:
             binary_list = np.concatenate(result, axis=1)
             x_t_binary_init = tf.reshape(x_t_binary_init, [num_samples, -1])
         else:
-            x_t_binary_init = tf.random.uniform([num_samples], minval=0, maxval=self.d, dtype=tf.int32)  #
+            x_t_binary_init = tf.random.uniform([num_samples], minval=0, maxval=self.d, dtype=tf.int32)  # 随机初始化
 
             binary_list = generate_samples(num_samples, x_t_binary_init, self.N, self.num_timesteps, self.Theta,
                                            self.L, self.ansatz_connection)  # [num_samples, N]
-            # binary_list = binary_list.numpy()
-        # print(time.time() - t1)
-        samples_np = binary_list[-1].astype(np.int32)
+
+        samples_np = binary_list[-1].astype(np.int32)  #
 
         samples_flat = samples_np.reshape(num_samples, -1)
 
@@ -215,15 +214,17 @@ class Model:
 
         kl_0, frequencies_0 = self.draw(num_samples, samples_flat, epoch, t=0, result_path=result_path)
 
-        print(f"{num_samples}, KL ：{kl_0:.5f}")
+
+        print(f"generate {num_samples} samples, KL: {kl_0:.5f}")
 
         output_file_path = result_path + f"/output_samples/samples_epoch{epoch}_kl_{kl_0:.4f}.txt"
         if not args.fast_flat:
             with open(output_file_path, 'w') as f:
                 for sample in samples_flat:
 
-                    sample_str = ''.join(map(str, sample))
-                    f.write(sample_str + '\n')
+                    sample_str = ''.join(map(str, sample))  #
+                    f.write(sample_str + '\n')  #
+
 
         x_t_binary_init = tf.bitwise.right_shift(tf.expand_dims(x_t_binary_init, axis=-1), tf.range(0, self.N)) & 1
         x_t_binary_init = tf.reshape(x_t_binary_init, [tf.shape(x_t_binary_init)[0], self.N])
@@ -234,6 +235,7 @@ class Model:
         if not args.fast_flat:
             kl_list.append(kl_T)
             prob_list.append(frequencies_T)
+
             for i, t in enumerate(reversed(range(1, args.num_timesteps))):
                 samples_flat = binary_list[i].reshape(num_samples, -1)
                 kl_t, frequencies = self.draw(num_samples, samples_flat, epoch, t=t, result_path=result_path)
@@ -251,7 +253,6 @@ class Model:
     def draw(self, num_samples, samples_flat, epoch, t, result_path):
         decimal_values = [int(''.join(map(str, sample.flatten())), 2) for sample in samples_flat]
 
-        #
         frequency_count = Counter(decimal_values)
 
         all_possible_values = list(range(self.d))
@@ -265,7 +266,7 @@ class Model:
 
     def draw_picture(self, frequencies, result_path, epoch, kl, t, inf_flat=False):
 
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(10, 6))  #
         plt.bar(self.all_possible_values, self.frequencies_stand, alpha=0.8, label="target", color="skyblue")
         plt.bar(self.all_possible_values, frequencies, alpha=0.5, label="trained", color="orange")
 
@@ -300,7 +301,7 @@ class Model:
 
             ts = time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
             result_path = f'result_{self.N}qubit_gaussian/T{args.num_timesteps}/{args.ansatz_connection}/{sigma_type}/' \
-                          f'L{args.layer}_seed{args.seed}_{ts}'
+                          f'L{args.layer}_seed{args.seed}'
 
             if not os.path.exists(result_path):
                 os.makedirs(result_path)  # make dir
