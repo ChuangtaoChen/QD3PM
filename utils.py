@@ -17,8 +17,7 @@ def compute_alpha_t(alpha_bar):
 
 
 def binary_to_decimal(binary_tensor, N):
-    """
-    """
+
     powers_of_two = tf.constant([2 ** i for i in reversed(range(N))], dtype=tf.int32)
     decimal_tensor = tf.reduce_sum(binary_tensor * powers_of_two, axis=1)
     return decimal_tensor
@@ -37,10 +36,9 @@ def train_step(x0, t, N, d, alpha_bar, alpha_t, Theta, opt, cm_state, T, batch_s
     decimal_data = binary_to_decimal(x0, N)  # [batch_size]
     x0_one_hot = decimal_to_one_hot(decimal_data, num_classes=d)  # [batch_size, d]
 
-    #
+
     alpha_bar_t_list = tf.gather(alpha_bar, t)
     alpha_bar_t_1_list = tf.gather(alpha_bar, t - 1)
-
 
     y, _ = depolarizing_channel_and_sample(x0_one_hot, alpha_bar_t_list, cm_state)
     y = tf.cast(y, tf.int32)
@@ -48,10 +46,10 @@ def train_step(x0, t, N, d, alpha_bar, alpha_t, Theta, opt, cm_state, T, batch_s
 
     rho_t_1, py = depolarizing_channel_no_jit(x0_one_hot, alpha_bar_t_1_list, y, cm_state)
 
-    alpha_t_list = tf.gather(alpha_t, t - 1)
-    updated_rho = get_true_post(y, rho_t_1, alpha_t_list, py, d)
+    alpha_t_list = tf.gather(alpha_t, t - 1)    # index 从0开始，alpha_t[0]代表\rho_0向\rho_1演化时的那个alpha_1
+    updated_rho = get_true_post(y, rho_t_1, alpha_t_list, py, d)   # 计算t>1部分的后验态
     prob_true_t = tf.math.real(tf.linalg.diag_part(updated_rho))
-
+    # 针对t=1的情况
     t1 = tf.ones([batch_size], tf.int32)
     alpha_bar_t1_list = tf.gather(alpha_bar, t1)
 
@@ -59,7 +57,7 @@ def train_step(x0, t, N, d, alpha_bar, alpha_t, Theta, opt, cm_state, T, batch_s
     y1 = tf.cast(y1, tf.int32)
     y1_binary = tf.reverse(tf.bitwise.right_shift(tf.expand_dims(y1, axis=-1), tf.range(0, N)) & 1, axis=[-1])
 
-    rho_t_0, py1 = depolarizing_channel_no_jit(x0_one_hot, tf.gather(alpha_bar, t1 - 1), y1, cm_state) #
+    rho_t_0, py1 = depolarizing_channel_no_jit(x0_one_hot, tf.gather(alpha_bar, t1 - 1), y1, cm_state) # 最原始的x0对应的rho0
 
     prob_true_0 = tf.math.real(tf.linalg.diag_part(rho_t_0))
     with tf.GradientTape() as tape:
@@ -88,10 +86,7 @@ class CustomLearningRateSchedule(tf.keras.optimizers.schedules.LearningRateSched
         self.min_lr = min_lr
 
     def __call__(self, step):
-
         step = tf.cast(step, tf.float32)
-
         decayed_lr = self.initial_lr * tf.math.exp(-self.beta * step)
-
         return tf.math.maximum(decayed_lr, self.min_lr)
 
