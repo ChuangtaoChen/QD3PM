@@ -8,7 +8,9 @@ class RBFMMD2TF(tf.Module):
         self.sigma = sigma
         self.num_bit = num_bit
         self.is_binary = is_binary
+
         self.basis = tf.constant(np.arange(2**num_bit, dtype='int32'), dtype=tf.int32)
+
         self.K = self.rbf_kernel(self.basis, self.basis, self.sigma, self.is_binary)
 
     def rbf_kernel(self, x, y, sigma, is_binary):
@@ -84,7 +86,7 @@ if __name__ == "__main__":
 
 
     d = 2 ** num_bit
-    # px = tf.constant([2, 1.0 / d] * d, dtype=tf.float32)
+    # px = tf.constant([2, 1.0 / d] * d, dtype=tf.float32)  #
     px = tf.random.normal([4, d])
     py = tf.random.normal([4, d], mean=1.0)
     px = tf.nn.softmax(px, -1)
