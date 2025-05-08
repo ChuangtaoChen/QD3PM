@@ -46,10 +46,10 @@ def train_step(x0, t, N, d, alpha_bar, alpha_t, Theta, opt, cm_state, T, batch_s
 
     rho_t_1, py = depolarizing_channel_no_jit(x0_one_hot, alpha_bar_t_1_list, y, cm_state)
 
-    alpha_t_list = tf.gather(alpha_t, t - 1)    # index 从0开始，alpha_t[0]代表\rho_0向\rho_1演化时的那个alpha_1
-    updated_rho = get_true_post(y, rho_t_1, alpha_t_list, py, d)   # 计算t>1部分的后验态
+    alpha_t_list = tf.gather(alpha_t, t - 1)    
+    updated_rho = get_true_post(y, rho_t_1, alpha_t_list, py, d) 
     prob_true_t = tf.math.real(tf.linalg.diag_part(updated_rho))
-    # 针对t=1的情况
+
     t1 = tf.ones([batch_size], tf.int32)
     alpha_bar_t1_list = tf.gather(alpha_bar, t1)
 
@@ -57,7 +57,7 @@ def train_step(x0, t, N, d, alpha_bar, alpha_t, Theta, opt, cm_state, T, batch_s
     y1 = tf.cast(y1, tf.int32)
     y1_binary = tf.reverse(tf.bitwise.right_shift(tf.expand_dims(y1, axis=-1), tf.range(0, N)) & 1, axis=[-1])
 
-    rho_t_0, py1 = depolarizing_channel_no_jit(x0_one_hot, tf.gather(alpha_bar, t1 - 1), y1, cm_state) # 最原始的x0对应的rho0
+    rho_t_0, py1 = depolarizing_channel_no_jit(x0_one_hot, tf.gather(alpha_bar, t1 - 1), y1, cm_state) 
 
     prob_true_0 = tf.math.real(tf.linalg.diag_part(rho_t_0))
     with tf.GradientTape() as tape:
