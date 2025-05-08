@@ -8,12 +8,12 @@ tfd = tfp.distributions
 
 class Discrete_Gaussian:
     def __init__(self, batch_size=16, num_dataset=100000, n_bits=10):
-        # 设置参数
+
         self.n_bits = n_bits
         self.x_max = 2 ** self.n_bits  #
         # self.x = np.arange(1, self.x_max + 1)  
         self.batch_size = batch_size
-        # 高斯分布参数
+
         self.nu = self.x_max / 8  # 
         self.mu1 = (2 / 7) * self.x_max  #
         self.mu2 = (5 / 7) * self.x_max  # 
