@@ -1,0 +1,109 @@
+import numpy as np
+import tensorflow as tf
+from quantum import K, get_true_post, PQC, depolarizing_channel_no_jit, depolarizing_channel_and_sample
+
+
+def compute_g(t, T, s):
+    return np.cos(((t / T + s) / (1 + s)) * (np.pi / 2)) ** 2
+
+def compute_alpha_bar(T, s):
+    g_0 = compute_g(0, T, s)
+    alpha_bar = np.array([compute_g(t, T, s) / g_0 for t in range(T + 1)])
+    return alpha_bar
+
+def compute_alpha_t(alpha_bar):
+    alpha_t = np.array([alpha_bar[t] / alpha_bar[t - 1] for t in range(1, len(alpha_bar))])
+    return alpha_t
+
+
+def binary_to_decimal(binary_tensor, N):
+    """
+    将 TensorFlow 张量 (batch, N) 的二进制数据转为对应的十进制数。
+    :param binary_tensor: 二进制张量，形状为 (batch, N)
+    :return: 十进制张量，形状为 (batch,)
+    """
+    powers_of_two = tf.constant([2 ** i for i in reversed(range(N))], dtype=tf.int32)
+    decimal_tensor = tf.reduce_sum(binary_tensor * powers_of_two, axis=1)
+    return decimal_tensor
+
+
+def decimal_to_one_hot(decimal_tensor, num_classes):
+    """
+    将十进制数转化为 one-hot 向量。
+    :param decimal_tensor: 十进制张量，形状为 (batch,)
+    :param num_classes: one-hot 向量的维度大小（即 2^N）
+    :return: 对应的 one-hot 向量，形状为 (batch, num_classes)
+    """
+    one_hot_tensor = tf.one_hot(decimal_tensor, depth=num_classes, dtype=tf.float32)
+    return one_hot_tensor
+
+
+@tf.function
+def train_step(x0, t, N, d, alpha_bar, alpha_t, Theta, opt, cm_state, T, batch_size, mmd_loss, L, ansatz_connection):
+    # 必要的处理
+    x0 = tf.reshape(x0, [-1, N])  # [batch_size, N]
+    decimal_data = binary_to_decimal(x0, N)  # [batch_size]
+    x0_one_hot = decimal_to_one_hot(decimal_data, num_classes=d)  # [batch_size, d]
+
+    # 针对t大于1的部分进行计算 拿出alpha_bar 值
+    alpha_bar_t_list = tf.gather(alpha_bar, t)
+    alpha_bar_t_1_list = tf.gather(alpha_bar, t - 1)
+
+    # 采样得到经典结果
+    y, _ = depolarizing_channel_and_sample(x0_one_hot, alpha_bar_t_list, cm_state)
+    y = tf.cast(y, tf.int32)
+    y_binary = tf.reverse(tf.bitwise.right_shift(tf.expand_dims(y, axis=-1), tf.range(0, N)) & 1, axis=[-1])
+
+    rho_t_1, py = depolarizing_channel_no_jit(x0_one_hot, alpha_bar_t_1_list, y, cm_state)
+
+    alpha_t_list = tf.gather(alpha_t, t - 1)    # index 从0开始，alpha_t[0]代表\rho_0向\rho_1演化时的那个alpha_1
+    updated_rho = get_true_post(y, rho_t_1, alpha_t_list, py, d)   # 计算t>1部分的后验态
+    prob_true_t = tf.math.real(tf.linalg.diag_part(updated_rho))
+    # 针对t=1的情况
+    t1 = tf.ones([batch_size], tf.int32)
+    alpha_bar_t1_list = tf.gather(alpha_bar, t1)
+
+    y1, _ = depolarizing_channel_and_sample(x0_one_hot, alpha_bar_t1_list, cm_state)
+    y1 = tf.cast(y1, tf.int32)
+    y1_binary = tf.reverse(tf.bitwise.right_shift(tf.expand_dims(y1, axis=-1), tf.range(0, N)) & 1, axis=[-1])
+
+    rho_t_0, py1 = depolarizing_channel_no_jit(x0_one_hot, tf.gather(alpha_bar, t1 - 1), y1, cm_state) # 最原始的x0对应的rho0
+
+    prob_true_0 = tf.math.real(tf.linalg.diag_part(rho_t_0))
+    with tf.GradientTape() as tape:
+        tape.watch(Theta)
+        # t, y, Theta, N, T, L, ansatz_connection
+        rho_pred_t = PQC(tf.cast(t, tf.float32), y_binary, Theta, N, T, L, ansatz_connection)
+        prob_pred_t = tf.math.real(tf.linalg.diag_part(rho_pred_t))
+        lt = tf.reduce_mean(mmd_loss(prob_pred_t, prob_true_t))
+
+        rho_pred_0 = PQC(tf.cast(t1, tf.float32), y1_binary, Theta, N, T, L, ansatz_connection)
+        prob_pred_0 = tf.math.real(tf.linalg.diag_part(rho_pred_0))
+        l0 = tf.reduce_mean(mmd_loss(prob_pred_0, prob_true_0))
+
+        loss = l0 + lt
+
+    gradients = tape.gradient(loss, Theta)
+    opt.apply_gradients([(grad, var) for grad, var in zip([gradients], [Theta])])
+    return loss, lt, l0
+
+
+class CustomLearningRateSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, initial_lr=0.01, beta=0.005, min_lr=1e-5):
+        """
+        initial_lr: 初始学习率
+        beta: 衰减系数
+        min_lr: 最小学习率
+        """
+        self.initial_lr = initial_lr
+        self.beta = beta
+        self.min_lr = min_lr
+
+    def __call__(self, step):
+        # 确保 step 是一个 Tensor
+        step = tf.cast(step, tf.float32)
+        # 使用 TensorFlow 的 tf.math.exp 计算指数
+        decayed_lr = self.initial_lr * tf.math.exp(-self.beta * step)
+        # 使用 tf.math.maximum 限制学习率最小值
+        return tf.math.maximum(decayed_lr, self.min_lr)
+
